@@ -62,6 +62,7 @@ O sistema identifica automaticamente as chaves de retorno (conteudo, content ou 
 | **API Service** | Consumo de endpoints e paginação | ✅ Funcional |
 | **Timeout** | Tempo de espera de 30 segundos | ⚙️ Configurado |
 
+![Demonstração do Sistema](exemplo.jpg)
 
 ## 📈 Roadmap de Evolução
 
