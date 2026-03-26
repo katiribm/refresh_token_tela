@@ -1,0 +1,38 @@
+# Ambientes Virtuais
+venv/
+env/
+.env/
+ENV/
+bin/
+lib/
+include/
+
+# Byte-compiled / arquivos de cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribuição / Pacotes
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+
+# Logs e Databases
+*.log
+local_settings.py
+db.sqlite3
+.sqlite3
+
+# Configurações de IDE (Opcional, mas recomendado)
+.vscode/
+.idea/
+.DS_Store
