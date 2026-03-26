@@ -1,8 +1,8 @@
 # Ambientes Virtuais
+.env
 venv/
-env/
-.env/
-ENV/
+__pycache__/
+*.pyc
 bin/
 lib/
 include/
