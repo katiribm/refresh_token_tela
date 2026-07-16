@@ -1,61 +1,92 @@
 import os
-import json
 from dotenv import load_dotenv
+import requests
 from auth_handler import Autorizacao
-from api_service import BethaGetService
+from api_service import BethaGetService  # Nome corrigido aqui
+from database_handler import salvar_tributos_no_postgres
 
-load_dotenv()
-
-def extrair_com_validacao(url_endpoint, forcar_refresh=False):
-    print("\n" + "="*60)
-    print("🔍 CONFIGURANDO AMBIENTE DE EXTRAÇÃO")
-    print("="*60)
-
+def executar_integracao():
+    load_dotenv()
+    
+    # 1. Autenticação
     auth = Autorizacao(
-        client_id=os.getenv("CLIENT_ID"),
-        redirect_uri=os.getenv("REDIRECT_URI"),
-        token=os.getenv("TOKEN_TELA"),
-        user_access=os.getenv("USER_ACCESS")
+        client_id=os.getenv('CLIENT_ID'),
+        redirect_uri=os.getenv('REDIRECT_URI'),
+        token=os.getenv('TOKEN_TELA'),
+        user_access=os.getenv('USER_ACCESS').strip()
     )
 
-    if forcar_refresh:
-        print("🔄 OPÇÃO ATIVADA: Forçando renovação do token agora...")
-        auth.getToken(force_refresh=True)
+
+    # 2. Instancia o serviço com o nome correto
+    servico = BethaGetService(auth)
+
+
+    url = f"""https://nota-eletronica.betha.cloud/nota-eletronica/notas/api/notas-fiscais?
+    fields=id,nroNota,nroVerificacao,nroRps,dhEmissao,dhEmissaoRps,idContribuintes,dadosPrestador.nome,dadosPrestador.inscricao,
+    dadosPrestador.tipoPessoa,dadosTomador.nome,dadosTomador.inscricao,dadosTomador.tipoPessoa,vlTotalServicos,vlTotalBaseCalculo,
+    vlTotalIss,vlCreditoTributario,vlCreditoTributarioCancelado,situacao,situacaoGuia,dadosXml.status,tipoCertificado,
+    competencias.descricao,chaveAcessoNotaNacional,nfEnviadaAdnNotaNacional,nroNotaNacional&filter="""
+
+    # 3. Define o endpoint de Tributos 
+    #url_tipos_logradouros = f"https://tributos.betha.cloud/tributos/v1/api/cadastros/bancos"
+    #url_contribuintes = f"https://tributos.betha.cloud/tributos/v1/api/cadastros/referentes/contribuintes?filter=(situacao+%3D+%22ATIVO%22+and+tipo+%3D+%22FISICA%22)&sort=codigo+desc"    
+    #url_economicos = "https://tributos.betha.cloud/tributos/v1/api/cadastros/referentes/economicos"
+    #url_logradouros = "https://tributos.betha.cloud/tributos/v1/api/cadastros/enderecos/logradouros"
+    #url_bairros = "https://tributos.betha.cloud/tributos/v1/api/cadastros/enderecos/bairros"
+    #url_parcelamentos = "https://tributos.betha.cloud/tributos/v1/api/arrecadacao/parcelamentos/?filter=pessoa.id+in+(71431147)"
+    #url_parcelamentos_parcelas = "https://tributos.betha.cloud/tributos/dados/api/parcelamentos/parcelas?filter=parcelamento.idContribuinte+in+(71431147)"
+    #url_parcelamentos_composicoes = "https://tributos.betha.cloud/tributos/dados/api/parcelamentos/composicoes?filter=parcelamento.idContribuinte+in+(71431147)"
+    #url_pagamentos_parcelamentos = "https://tributos.betha.cloud/tributos/dados/api/pagamentos/parcelamentos?filter=idContribuinte+in+(71431147)"
     
-    # Validação visual do estado do token
-    status_token = "✅ OK" if auth.valid() else "❌ EXPIRADO"
-    print(f"🔹 Token em uso: {auth.token[:15]}... ({status_token})")
 
-    service = BethaGetService(auth)
-    print(f"📡 Alvo: {url_endpoint}")
-    print("-" * 60)
+    print("🚀 Iniciando captura total de páginas...")
+    
+    # 4. Busca TUDO usando sua função de paginação
+    lista_completa = servico.get_all_pages(url, limit=100)
+    
+    if lista_completa:
+        print(f"📦 Total de {len(lista_completa)} registros encontrados.")
+        # 5. Salva no Postgres (Passamos a lista direto agora)
+        salvar_tributos_no_postgres(lista_completa, "stg_notas_fiscais")
+    else:
+        print("⚠️ Nenhum dado encontrado para processar.")
 
-    try:
-        registros_totais = service.get_all_pages(url_endpoint, limit=20)
+
+def executar_teste_reduzido():
+    load_dotenv()
+    
+    # 1. Autenticação
+    auth = Autorizacao(
+        client_id=os.getenv('CLIENT_ID'),
+        redirect_uri=os.getenv('REDIRECT_URI'),
+        token=os.getenv('TOKEN_TELA'),
+        user_access=os.getenv('USER_ACCESS')
+    )
+
+    servico = BethaGetService(auth)
+    url_parcelamentos = "https://tributos.betha.cloud/tributos/v1/api/cadastros/referentes/parcelamentos"
+
+    print("🧪 Rodando teste reduzido (limite: 10 registros)...")
+    
+    # Em vez de get_all_pages, usamos get_data diretamente para 1 página
+    params = {"limit": 10, "offset": 0}
+    dados_brutos = servico.get_data(url_parcelamentos, params=params)
+    
+    if dados_brutos:
+        # Extraímos a lista usando a lógica que você já tem na classe
+        lista_10 = (
+            dados_brutos.get('conteudo') or 
+            dados_brutos.get('content') or 
+            dados_brutos.get('registros') or []
+        )
         
-        print("-" * 60)
-        if registros_totais:
-            print(f"✅ SUCESSO! Total de registros processados: {len(registros_totais)}")
-        else:
-            print("⚠️ Finalizado sem registros ou erro de timeout persistente.")
-            
-    except Exception as e:
-        print(f"💥 Erro crítico: {e}")
-
-    print("="*60 + "\n")
+        print(f"📦 Amostra de {len(lista_10)} registros capturada.")
+        
+        # Salvando no Postgres para validar a tabela
+        salvar_tributos_no_postgres(lista_10, "teste_stg_tributos_contribuintes_10")
+    else:
+        print("❌ Não foi possível capturar a amostra.")
 
 if __name__ == "__main__":
-    # Opção 1: Livro Cloud
-    # url = "https://livroeletronico.betha.cloud/livro-eletronico/service-layer/api/v1/listas-servicos-leis"
-
-    #Opção 2: Tributos Cloud
-    #url = "https://tributos.betha.cloud/tributos/dados/api/economicos"
-    #url = "https://tributos.betha.cloud/tributos/dados/api/debitos"
-    url = "https://tributos.betha.cloud/tributos/dados/api/parcelamentos"
-    
-    # Altere conforme a necessidade do teste
-    OPCAO_FORCAR_REFRESH = False
-    
-    extrair_com_validacao(url, forcar_refresh=OPCAO_FORCAR_REFRESH)
-
-
+    executar_integracao()
+    #executar_teste_reduzido()

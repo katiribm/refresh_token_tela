@@ -6,23 +6,30 @@ class BethaGetService:
     def __init__(self, auth_provider):
         self.auth = auth_provider
 
-    def get_data(self, url, params=None):
-        for tentativa in range(3):
-            headers = self.auth.dict_header
+    def get_data(self, url, params=None, max_retries=3):
+        headers = self.auth.dict_header
+        retries = 0
+
+        print(f"DEBUG HEADERS: {headers}") 
+
+        while retries < max_retries:
             try:
-                response = requests.get(url, headers=headers, params=params, timeout=30)
+                response = requests.get(url, headers=headers, params=params, timeout=45)
+                response.raise_for_status() 
                 
-                if response.status_code == 401:
-                    self.auth.getToken(force_refresh=True)
-                    continue
+                return response.json() 
+
+            except requests.Timeout:
+                retries += 1
+                print(f"\n ⚠️ A API demorou para responder (Timeout). Tentativa {retries} de {max_retries}...")
+                time.sleep(5) 
                 
-                if response.status_code in (200, 201):
-                    return response.json()
-                
-                return None
-                
-            except requests.exceptions.RequestException:
-                time.sleep(2)
+            except requests.RequestException as e:
+                retries += 1
+                print(f"\n ⚠️ Falha na requisição: {e}. Tentativa {retries} de {max_retries}...")
+                time.sleep(5)
+
+        print(f"\n ❌ Erro Crítico: A API não respondeu após {max_retries} tentativas.")
         return None
 
     def get_all_pages(self, url, limit=50):
